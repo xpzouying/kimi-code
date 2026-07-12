@@ -503,7 +503,17 @@ const SUPPORTED_B64_VIDEO_TYPES = new Set([
   'video/3gpp',
 ]);
 
-function imageUrlPartToAnthropic(url: string): AnthropicImageBlock {
+// An image/video whose base64 media type this provider cannot carry is degraded
+// to a placeholder text block — carrying the mime so the model can re-encode and
+// retry — instead of throwing. A single un-sendable attachment must not fail the
+// whole request: history is resent every turn, so a throw here poisons the
+// session and even blocks compaction from recovering. Mirrors the audio
+// degradation above (OMITTED_MEDIA_PLACEHOLDER).
+function unsupportedMediaPlaceholder(kind: 'image' | 'video', mediaType: string): TextBlockParam {
+  return { type: 'text', text: `(${kind} omitted: unsupported format ${mediaType})` };
+}
+
+function imageUrlPartToAnthropic(url: string): AnthropicImageBlock | TextBlockParam {
   if (url.startsWith('data:')) {
     const withoutScheme = url.slice(5);
     const parts = withoutScheme.split(';base64,', 2);
@@ -513,9 +523,7 @@ function imageUrlPartToAnthropic(url: string): AnthropicImageBlock {
     const mediaType = parts[0];
     const data = parts[1];
     if (!SUPPORTED_B64_MEDIA_TYPES.has(mediaType)) {
-      throw new ChatProviderError(
-        `Unsupported media type for base64 image: ${mediaType}, url: ${url}`,
-      );
+      return unsupportedMediaPlaceholder('image', mediaType);
     }
     return {
       type: 'image',
@@ -528,7 +536,7 @@ function imageUrlPartToAnthropic(url: string): AnthropicImageBlock {
   };
 }
 
-function videoUrlPartToAnthropic(url: string): AnthropicVideoBlock {
+function videoUrlPartToAnthropic(url: string): AnthropicVideoBlock | TextBlockParam {
   if (url.startsWith('data:')) {
     const withoutScheme = url.slice(5);
     const parts = withoutScheme.split(';base64,', 2);
@@ -538,9 +546,7 @@ function videoUrlPartToAnthropic(url: string): AnthropicVideoBlock {
     const mediaType = parts[0];
     const data = parts[1];
     if (!SUPPORTED_B64_VIDEO_TYPES.has(mediaType)) {
-      throw new ChatProviderError(
-        `Unsupported media type for base64 video: ${mediaType}, url: ${url}`,
-      );
+      return unsupportedMediaPlaceholder('video', mediaType);
     }
     return {
       type: 'video',

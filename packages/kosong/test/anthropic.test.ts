@@ -582,7 +582,32 @@ describe('AnthropicChatProvider', () => {
       ]);
     });
 
-    it('video url content rejects unsupported media type', async () => {
+    it('image url content with unsupported media type degrades to placeholder', async () => {
+      // An unsupported base64 image (e.g. avif) must NOT throw: history is resent
+      // every turn, so a throw poisons the whole session (and blocks compaction).
+      // Degrade to a placeholder text block carrying the mime instead.
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'image_url', imageUrl: { url: 'data:image/avif;base64,AAAA' } },
+          ] satisfies ContentPart[],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+      const messages = body['messages'] as Record<string, unknown>[];
+      expect(messages[0]?.['content']).toEqual([
+        {
+          type: 'text',
+          text: '(image omitted: unsupported format image/avif)',
+          cache_control: { type: 'ephemeral' },
+        },
+      ]);
+    });
+
+    it('video url content with unsupported media type degrades to placeholder', async () => {
       const provider = createProvider();
       const history: Message[] = [
         {
@@ -593,7 +618,15 @@ describe('AnthropicChatProvider', () => {
           toolCalls: [],
         },
       ];
-      await expect(captureRequestBody(provider, '', [], history)).rejects.toThrow(ChatProviderError);
+      const body = await captureRequestBody(provider, '', [], history);
+      const messages = body['messages'] as Record<string, unknown>[];
+      expect(messages[0]?.['content']).toEqual([
+        {
+          type: 'text',
+          text: '(video omitted: unsupported format image/png)',
+          cache_control: { type: 'ephemeral' },
+        },
+      ]);
     });
 
     it('tool result with video content', async () => {
